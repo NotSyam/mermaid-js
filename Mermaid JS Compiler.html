@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mermaid Studio V15 (Full AI + Custom UI)</title>
+    <style>
+        :root {
+            --bg-dark: #2B313F;       
+            --accent-teal: #59B9C7;   
+            --card-bg: #F0F4F8;      
+            --text-dark: #2c3e50;
+            --error-bg: #FADBD8;
+            --error-text: #C0392B;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; display: flex; flex-direction: column; height: 100vh;
+            background-color: var(--bg-dark); color: var(--text-dark); overflow: hidden;
+        }
+
+        /* --- HEADER --- */
+        header {
+            background-color: var(--bg-dark); padding: 10px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            height: 70px; border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        h1 { color: var(--card-bg); margin: 0; font-size: 1.3rem; letter-spacing: 0.5px; margin-right: 20px;}
+
+        .controls { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end;}
+
+        button, select {
+            padding: 8px 14px; border-radius: 8px; border: none;
+            cursor: pointer; font-weight: 600; font-size: 0.85rem;
+            transition: all 0.2s; outline: none; white-space: nowrap;
+        }
+
+        button.primary { background-color: var(--accent-teal); color: var(--bg-dark); }
+        button.primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+        button.ghost { background-color: rgba(255,255,255,0.1); color: var(--card-bg); border: 1px solid rgba(255,255,255,0.2); }
+        button.ghost:hover { background-color: rgba(255,255,255,0.2); }
+
+        select { background-color: rgba(255,255,255,0.1); color: var(--card-bg); border: 1px solid rgba(255,255,255,0.2); max-width: 140px; }
+        select option { background: var(--bg-dark); color: white; }
+
+        /* --- CUSTOM COLOR PANEL --- */
+        #custom-panel {
+            display: none; /* Hidden by default */
+            gap: 10px; align-items: center;
+            background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 8px;
+            margin-right: auto; border: 1px solid var(--accent-teal);
+        }
+        #custom-panel.active { display: flex; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .color-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .color-group label { font-size: 0.65rem; color: #ccc; text-transform: uppercase; }
+        input[type="color"] { border: none; width: 30px; height: 30px; cursor: pointer; background: none; padding: 0; }
+
+        /* --- LAYOUT --- */
+        .container { flex: 1; display: flex; padding: 15px; gap: 15px; height: calc(100vh - 70px); }
+
+        .card {
+            background-color: var(--card-bg); border-radius: 16px;
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .editor-pane { width: 40%; min-width: 320px; position: relative; }
+        
+        .card-header {
+            padding: 12px 20px; background: rgba(89, 185, 199, 0.15);
+            color: #2c3e50; font-weight: bold; font-size: 0.9rem;
+            display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .editor-content { flex: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+        
+        textarea {
+            flex: 1; width: 100%; padding: 20px;
+            font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; line-height: 1.5;
+            border: none; resize: none; outline: none; background: transparent; color: #333;
+        }
+        textarea::-webkit-scrollbar { width: 8px; }
+        textarea::-webkit-scrollbar-track { background: transparent; }
+        textarea::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
+
+        /* ERROR BOX SLIDE UP */
+        #error-box {
+            height: 0; background-color: var(--error-bg); color: var(--error-text);
+            border-top: 1px solid #E6B0AA; transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden; display: flex; flex-direction: column; flex-shrink: 0;
+        }
+        #error-box.show { height: 130px; }
+        .error-header {
+            padding: 8px 15px; font-size: 0.8rem; font-weight: bold;
+            background: rgba(0,0,0,0.05); display: flex; align-items: center; gap: 5px;
+        }
+        .error-content {
+            padding: 10px 15px; font-family: monospace; font-size: 0.85rem;
+            overflow-y: auto; white-space: pre-wrap; flex: 1;
+        }
+
+        /* --- RESIZER --- */
+        .resizer {
+            width: 10px; cursor: col-resize; display: flex; justify-content: center; align-items: center;
+            margin: 0 -5px; z-index: 10;
+        }
+        .resizer::after {
+            content: ""; width: 4px; height: 40px; background-color: rgba(255,255,255,0.1);
+            border-radius: 2px; transition: 0.2s;
+        }
+        .resizer:hover::after, .resizer.resizing::after { background-color: var(--accent-teal); height: 100%; }
+
+        /* --- PREVIEW --- */
+        .preview-pane { flex: 1; position: relative; }
+        #preview-wrapper {
+            width: 100%; height: 100%;
+            background-image: linear-gradient(rgba(150,150,150,0.1) 1px, transparent 1px), 
+                              linear-gradient(90deg, rgba(150,150,150,0.1) 1px, transparent 1px);
+            background-size: 20px 20px;
+            overflow: hidden; cursor: grab; display: flex; justify-content: center; align-items: center;
+        }
+        #preview-wrapper:active { cursor: grabbing; }
+        #transform-layer { transform-origin: 0 0; transition: transform 0.1s ease-out; }
+
+        /* --- LOADING OVERLAY --- */
+        #loading-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 50; display: none; backdrop-filter: blur(2px);
+        }
+        .spinner {
+            width: 35px; height: 35px; border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--accent-teal); border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #loading-text { font-weight: bold; color: var(--bg-dark); font-size: 0.9rem; margin-bottom: 5px; }
+        #loading-sub { font-size: 0.8rem; color: #666; }
+
+        /* Hidden Export */
+        #export-container { position: absolute; top: -9999px; left: -9999px; visibility: hidden; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Mermaid Studio</h1>
+
+        <div id="custom-panel">
+            <div class="color-group"><label>Node</label><input type="color" id="c1" value="#81D4FA" oninput="renderDiagram()"></div>
+            <div class="color-group"><label>Sec</label><input type="color" id="c2" value="#FFF59D" oninput="renderDiagram()"></div>
+            <div class="color-group"><label>Bg</label><input type="color" id="c3" value="#E1F5FE" oninput="renderDiagram()"></div>
+            <div class="color-group"><label>Line</label><input type="color" id="c4" value="#455A64" oninput="renderDiagram()"></div>
+            <div class="color-group"><label>Text</label><input type="color" id="c5" value="#263238" oninput="renderDiagram()"></div>
+        </div>
+
+        <div class="controls">
+            <button class="primary" onclick="fixCodeWithGemini()">✨ AI Fix</button>
+            <button class="ghost" onclick="setApiKey()">🔑 Key</button>
+            <select id="themeSelector">
+                <option value="default">Default</option>
+                <option value="base">Base</option>
+                <option value="dark">Dark</option>
+                <option value="forest">Forest</option>
+                <option value="neutral">Neutral</option>
+                <option value="custom">🎨 Custom...</option>
+            </select>
+            <button class="primary" onclick="processExport('png')">PNG</button>
+            <button class="primary" onclick="processExport('jpeg')">JPG</button>
+        </div>
+    </header>
+
+    <div class="container" id="container">
+        <div class="card editor-pane" id="editorPane">
+            <div class="card-header">
+                <span>INPUT CODE</span>
+                <span id="status-text" style="font-weight: normal; opacity: 0.6; font-size: 0.8rem;">Ready</span>
+            </div>
+            
+            <div class="editor-content">
+                <textarea id="input" spellcheck="false" placeholder="Write your Mermaid code here..."></textarea>
+                <div id="loading-overlay">
+                    <div class="spinner"></div>
+                    <div id="loading-text">AI Working...</div>
+                    <div id="loading-sub">Connecting to Gemini...</div>
+                </div>
+            </div>
+
+            <div id="error-box">
+                <div class="error-header">⚠️ SYNTAX ERROR</div>
+                <div class="error-content" id="error-text"></div>
+            </div>
+        </div>
+
+        <div class="resizer" id="dragMe"></div>
+
+        <div class="card preview-pane">
+            <div id="preview-wrapper">
+                <div id="transform-layer"><div id="preview"></div></div>
+            </div>
+            <button class="ghost" style="position: absolute; bottom: 20px; right: 20px; background: white; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.1);" onclick="resetZoom()">Reset Zoom</button>
+        </div>
+    </div>
+
+    <div id="export-container"></div>
+
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
+        // Elements
+        const inputEl = document.getElementById('input');
+        const previewEl = document.getElementById('preview');
+        const exportContainer = document.getElementById('export-container');
+        const errorBox = document.getElementById('error-box');
+        const errorText = document.getElementById('error-text');
+        const statusEl = document.getElementById('status-text');
+        const loaderEl = document.getElementById('loading-overlay');
+        const loadText = document.getElementById('loading-text');
+        const loadSub = document.getElementById('loading-sub');
+        const themeEl = document.getElementById('themeSelector');
+        const customPanel = document.getElementById('custom-panel');
+
+        let debounceTimer;
+        let lastErrorMsg = "";
+
+        // Init Default
+        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+
+        // --- 1. THEME & RENDER LOGIC ---
+        themeEl.addEventListener('change', () => {
+            if(themeEl.value === 'custom') customPanel.classList.add('active');
+            else customPanel.classList.remove('active');
+            renderDiagram();
+        });
+
+        function getMermaidConfig(isExport) {
+            const themeVal = themeEl.value;
+            let config = {
+                startOnLoad: false,
+                securityLevel: 'loose',
+                flowchart: { htmlLabels: !isExport } 
+            };
+
+            if (themeVal === 'custom') {
+                config.theme = 'base';
+                config.themeVariables = {
+                    'primaryColor': document.getElementById('c1').value,
+                    'secondaryColor': document.getElementById('c2').value,
+                    'tertiaryColor': document.getElementById('c3').value,
+                    'mainBkg': document.getElementById('c3').value,
+                    'lineColor': document.getElementById('c4').value,
+                    'primaryBorderColor': document.getElementById('c4').value,
+                    'textColor': document.getElementById('c5').value
+                };
+            } else {
+                config.theme = themeVal;
+            }
+            return config;
+        }
+
+        // Exposed to window for Color Picker oninput
+        window.renderDiagram = async function() {
+            const code = inputEl.value;
+            statusEl.innerText = "Rendering...";
+            
+            try {
+                const config = getMermaidConfig(false); 
+                mermaid.initialize(config);
+
+                const uniqueId = 'mermaid-view-' + Date.now();
+                const { svg } = await mermaid.render(uniqueId, code);
+                previewEl.innerHTML = svg;
+                
+                errorBox.classList.remove('show');
+                statusEl.innerText = "Ready";
+                lastErrorMsg = "";
+            } catch (error) {
+                errorBox.classList.add('show');
+                errorText.innerText = error.message;
+                lastErrorMsg = error.message;
+                statusEl.innerText = "Syntax Error";
+            }
+        }
+
+        // --- 2. EXPORT LOGIC (Off-screen) ---
+        window.processExport = async function(format) {
+            const code = inputEl.value;
+            statusEl.innerText = "Exporting...";
+
+            try {
+                exportContainer.innerHTML = '';
+                const config = getMermaidConfig(true); 
+                mermaid.initialize(config);
+
+                const exportId = 'mermaid-export-' + Date.now();
+                const { svg } = await mermaid.render(exportId, code);
+                exportContainer.innerHTML = svg;
+
+                await new Promise(r => setTimeout(r, 100));
+
+                const svgElement = exportContainer.querySelector('svg');
+                if (!svgElement) throw new Error("Gagal generate SVG");
+
+                const bbox = svgElement.getBBox(); 
+                let width = bbox.width || parseInt(svgElement.getAttribute("width")) || 800;
+                let height = bbox.height || parseInt(svgElement.getAttribute("height")) || 600;
+
+                width += 40; height += 40;
+                svgElement.setAttribute("viewBox", `${bbox.x - 20} ${bbox.y - 20} ${width} ${height}`);
+                svgElement.setAttribute("width", width);
+                svgElement.setAttribute("height", height);
+
+                const serializer = new XMLSerializer();
+                const svgString = serializer.serializeToString(svgElement);
+
+                const img = new Image();
+                const svg64 = btoa(unescape(encodeURIComponent(svgString)));
+                const image64 = 'data:image/svg+xml;base64,' + svg64;
+
+                const canvas = document.createElement("canvas");
+                canvas.width = width * 2; canvas.height = height * 2;
+                const ctx = canvas.getContext("2d");
+                
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                img.onload = function() {
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const link = document.createElement("a");
+                    link.download = `diagram.${format}`;
+                    link.href = canvas.toDataURL(`image/${format}`, 1.0);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    statusEl.innerText = "Success";
+                    renderDiagram();
+                };
+                img.onerror = () => { alert("Gagal convert gambar."); renderDiagram(); };
+                img.src = image64;
+
+            } catch (err) {
+                alert("Error: " + err.message);
+                renderDiagram();
+            }
+        };
+
+        // --- 3. AI GEMINI LOGIC (FULLY RESTORED) ---
+        window.setApiKey = function() {
+            const key = prompt("Google Gemini API Key:");
+            if(key) localStorage.setItem("gemini_key", key.trim());
+        }
+
+        async function getWorkingModel(apiKey) {
+            try {
+                loadSub.innerText = "Detecting AI Models...";
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+                const data = await response.json();
+                
+                if (data.error) throw new Error(data.error.message);
+                if (!data.models) throw new Error("No models found.");
+
+                const viableModels = data.models.filter(m => 
+                    m.supportedGenerationMethods && 
+                    m.supportedGenerationMethods.includes("generateContent") &&
+                    m.name.includes("gemini")
+                );
+
+                const flashModel = viableModels.find(m => m.name.includes("flash"));
+                const proModel = viableModels.find(m => m.name.includes("pro"));
+                const selected = flashModel || proModel || viableModels[0];
+
+                if (!selected) throw new Error("No compatible Gemini model found.");
+                return selected.name.replace("models/", "");
+
+            } catch (e) {
+                console.warn("Auto-detect failed, using default fallback.", e);
+                return "gemini-1.5-flash"; 
+            }
+        }
+
+        window.fixCodeWithGemini = async function() {
+            const apiKey = localStorage.getItem("gemini_key");
+            if (!apiKey) return alert("Silakan klik tombol 🔑 Key dan masukkan API Key Gemini.");
+
+            if (!lastErrorMsg && inputEl.value.trim() !== "") {
+                if(!confirm("Tidak ada error terdeteksi. Tetap jalankan AI?")) return;
+            }
+
+            loaderEl.style.display = 'flex';
+            loadText.innerText = "AI Processing...";
+
+            try {
+                // 1. Detect Model
+                const modelName = await getWorkingModel(apiKey);
+                loadSub.innerText = `Using ${modelName}...`;
+
+                // 2. Build Prompt
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+                
+                const prompt = `You are a Mermaid.js expert. Fix this broken code.
+                RULES:
+                - Use double quotes for labels with spaces/newlines.
+                - Replace newlines inside labels with <br/>.
+                - OUTPUT ONLY THE RAW MERMAID CODE. NO MARKDOWN. NO BACKTICKS.
+
+                BROKEN CODE:
+                ${inputEl.value}
+
+                ERROR MESSAGE:
+                ${lastErrorMsg}`;
+
+                // 3. Call API
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.error) throw new Error(data.error.message);
+                if (!data.candidates || !data.candidates[0].content) throw new Error("AI returned no content.");
+                
+                let result = data.candidates[0].content.parts[0].text;
+                
+                // 4. Clean Result
+                result = result.replace(/^```mermaid\n?/i, '')
+                               .replace(/^```\n?/i, '')
+                               .replace(/```$/i, '')
+                               .trim();
+
+                inputEl.value = result;
+                renderDiagram();
+                alert(`Fixed successfully using ${modelName}!`);
+
+            } catch (err) {
+                alert("AI Error: " + err.message);
+            } finally {
+                loaderEl.style.display = 'none';
+            }
+        };
+
+        // --- 4. RESIZER & ZOOM ---
+        const resizer = document.getElementById('dragMe');
+        const editorPane = document.getElementById('editorPane');
+        const container = document.getElementById('container');
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', () => { isResizing = true; resizer.classList.add('resizing'); document.body.style.cursor = 'col-resize'; });
+        document.addEventListener('mouseup', () => { isResizing = false; resizer.classList.remove('resizing'); document.body.style.cursor = 'default'; });
+        document.addEventListener('mousemove', (e) => {
+            if(!isResizing) return;
+            const rect = container.getBoundingClientRect();
+            let newWidth = ((e.clientX - rect.left) / rect.width) * 100;
+            if(newWidth > 20 && newWidth < 80) editorPane.style.width = `${newWidth}%`;
+        });
+
+        const transformLayer = document.getElementById('transform-layer');
+        const previewWrapper = document.getElementById('preview-wrapper');
+        let scale=1, pX=0, pY=0, panning=false, start={x:0,y:0};
+
+        function updateTransform() { transformLayer.style.transform = `translate(${pX}px, ${pY}px) scale(${scale})`; }
+        window.resetZoom = () => { scale=1; pX=0; pY=0; updateTransform(); };
+        
+        previewWrapper.onmousedown = e => { e.preventDefault(); panning=true; start={x:e.clientX-pX, y:e.clientY-pY}; };
+        previewWrapper.onmouseup = () => panning=false;
+        previewWrapper.onmouseleave = () => panning=false;
+        previewWrapper.onmousemove = e => { if(panning) { e.preventDefault(); pX=e.clientX-start.x; pY=e.clientY-start.y; updateTransform(); }};
+        previewWrapper.onwheel = e => { e.preventDefault(); const d = -e.deltaY; (d>0)? scale*=1.1 : scale/=1.1; updateTransform(); };
+
+        inputEl.addEventListener('input', () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(renderDiagram, 500); });
+
+        // Default Code to start
+        inputEl.value = `flowchart TD\n  A[Start] --> B{AI Works?}\n  B -- Yes --> C[Great!]\n  B -- No --> D[Check Key]\n  style C stroke-width:4px`;
+        renderDiagram();
+    </script>
+</body>
+</html>
